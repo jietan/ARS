@@ -4,7 +4,6 @@ Horia Mania --- hmania@berkeley.edu
 Aurelia Guy
 Benjamin Recht 
 '''
-
 import parser
 import time
 import os
@@ -17,6 +16,8 @@ import optimizers
 from policies import *
 import socket
 from shared_noise import *
+import pybullet
+from pybullet_envs.bullet import minitaur_gym_env
 
 @ray.remote
 class Worker(object):
@@ -32,9 +33,9 @@ class Worker(object):
                  delta_std=0.02):
 
         # initialize OpenAI environment for each worker
-        self.env = gym.make(env_name)
+        self.env = minitaur_gym_env.MinitaurBulletEnv()#gym.make(env_name)
         self.env.seed(env_seed)
-
+        print ("env seed: {}".format(env_seed))
         # each worker gets access to the shared noise table
         # with independent random streams for sampling
         # from the shared noise table. 
@@ -99,7 +100,7 @@ class Worker(object):
 
                 # for evaluation we do not shift the rewards (shift = 0) and we use the
                 # default rollout length (1000 for the MuJoCo locomotion tasks)
-                reward, r_steps = self.rollout(shift = 0., rollout_length = self.env.spec.timestep_limit)
+                reward, r_steps = self.rollout(shift = 0., rollout_length = 1000)
                 rollout_rewards.append(reward)
                 
             else:
@@ -160,7 +161,7 @@ class ARSLearner(object):
         logz.configure_output_dir(logdir)
         logz.save_params(params)
         
-        env = gym.make(env_name)
+        env = minitaur_gym_env.MinitaurBulletEnv() #gym.make(env_name)
         
         self.timesteps = 0
         self.action_size = env.action_space.shape[0]
@@ -180,6 +181,7 @@ class ARSLearner(object):
         # create shared table for storing noise
         print("Creating deltas table.")
         deltas_id = create_shared_noise.remote()
+
         self.deltas = SharedNoiseTable(ray.get(deltas_id), seed = seed + 3)
         print('Created deltas table.')
 
@@ -192,7 +194,6 @@ class ARSLearner(object):
                                       deltas=deltas_id,
                                       rollout_length=rollout_length,
                                       delta_std=delta_std) for i in range(num_workers)]
-
 
         # initialize policy 
         if policy_params['type'] == 'linear':
@@ -209,7 +210,6 @@ class ARSLearner(object):
         """ 
         Aggregate update step from rollouts generated in parallel.
         """
-
         if num_rollouts is None:
             num_deltas = self.num_deltas
         else:
@@ -355,7 +355,7 @@ def run_ars(params):
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
 
-    env = gym.make(params['env_name'])
+    env = minitaur_gym_env.MinitaurBulletEnv() #gym.make(params['env_name'])
     ob_dim = env.observation_space.shape[0]
     ac_dim = env.action_space.shape[0]
 
